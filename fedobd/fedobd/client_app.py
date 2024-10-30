@@ -1,8 +1,8 @@
 """fedobd: A Flower / HuggingFace app."""
-
+import numpy as np
 import torch
 from flwr.client import ClientApp, NumPyClient
-from flwr.common import Context
+from flwr.common import Context, Scalar, NDArrays
 from transformers import AutoModelForSequenceClassification
 
 from fedobd.task import get_weights, load_data, set_weights, test, train
@@ -28,6 +28,45 @@ class FlowerClient(NumPyClient):
         loss, accuracy = test(self.net, self.testloader, self.device)
         return float(loss), len(self.testloader), {"accuracy": accuracy}
 
+    def get_parameters(self, config: dict[str, Scalar]) -> NDArrays:
+        if config["round"] < 3:
+            return self.get_parameters_for_sending(self.net, 0.1)
+        else:
+            return self.get_parameters_for_phase_2(self.net)
+
+    def get_parameters_for_sending(self, net, dropout_rate: float) -> NDArrays:
+        old_blocks = self.old_weights
+        current_blocks = get_weights(net)
+        diff_dictionary = {}
+        for i in range(len(old_blocks)):
+            diff_dictionary[i] = np.linalg.norm(old_blocks[i] - current_blocks[i])
+        retain_rate = 1 - dropout_rate
+        retain_count = int(retain_rate * len(old_blocks))
+
+        sorted_indices = np.argsort(list(diff_dictionary.values()))
+
+        retained_indices = sorted_indices[-retain_count:]
+
+        new_blocks = []
+        for i in range(len(old_blocks)):
+            if i in retained_indices:
+                # new_blocks.append(current_blocks[i])
+                new_blocks.append(current_blocks[i].astype(np.uint8))
+            else:
+                new_blocks.append(None)
+
+        return new_blocks
+
+    def get_parameters_for_phase_2(self, net) -> NDArrays:
+        old_blocks = self.old_weights
+        current_blocks = get_weights(net)
+
+        new_blocks = []
+        for i in range(len(old_blocks)):
+            fine_tuned_block = np.round(current_blocks[i], decimals=4).astype(np.uint8)
+            new_blocks.append(fine_tuned_block)
+
+        return new_blocks
 
 def client_fn(context: Context):
 
