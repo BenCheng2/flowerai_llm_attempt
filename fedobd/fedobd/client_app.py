@@ -17,24 +17,21 @@ class FlowerClient(NumPyClient):
         self.local_epochs = local_epochs
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.net.to(self.device)
+        self.old_weights = get_weights(self.net)
 
     def fit(self, parameters, config):
+        self.old_weights = get_weights(self.net)
         set_weights(self.net, parameters)
         train(self.net, self.trainloader, epochs=self.local_epochs, device=self.device)
-        return get_weights(self.net), len(self.trainloader), {}
+        parameters_for_fitting, config_for_fitting = self.get_parameters_phase_1(self.net, 0.1)
+        return parameters_for_fitting, len(self.trainloader), config_for_fitting
 
     def evaluate(self, parameters, config):
         set_weights(self.net, parameters)
         loss, accuracy = test(self.net, self.testloader, self.device)
         return float(loss), len(self.testloader), {"accuracy": accuracy}
 
-    def get_parameters(self, config: dict[str, Scalar]) -> NDArrays:
-        if config["round"] < 3:
-            return self.get_parameters_for_sending(self.net, 0.1)
-        else:
-            return self.get_parameters_for_phase_2(self.net)
-
-    def get_parameters_for_sending(self, net, dropout_rate: float) -> NDArrays:
+    def get_parameters_phase_1(self, net, dropout_rate):
         old_blocks = self.old_weights
         current_blocks = get_weights(net)
         diff_dictionary = {}
@@ -50,14 +47,13 @@ class FlowerClient(NumPyClient):
         new_blocks = []
         for i in range(len(old_blocks)):
             if i in retained_indices:
-                # new_blocks.append(current_blocks[i])
                 new_blocks.append(current_blocks[i].astype(np.uint8))
-            else:
-                new_blocks.append(None)
 
-        return new_blocks
+        retained_indices = {str(key): 1 for key in retained_indices}
 
-    def get_parameters_for_phase_2(self, net) -> NDArrays:
+        return new_blocks, retained_indices
+
+    def get_parameters_phase_2(self, net) -> NDArrays:
         old_blocks = self.old_weights
         current_blocks = get_weights(net)
 
@@ -68,8 +64,8 @@ class FlowerClient(NumPyClient):
 
         return new_blocks
 
-def client_fn(context: Context):
 
+def client_fn(context: Context):
     # Get this client's dataset partition
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
