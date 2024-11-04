@@ -35,6 +35,7 @@ class CustomFedAvg(FedAvg):
             evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
             inplace: bool = True,
             shapes: List[Tuple[int, ...]] = None,
+            blocks: List[np.ndarray] = None
     ) -> None:
         super().__init__(
             fraction_fit=fraction_fit,
@@ -52,6 +53,7 @@ class CustomFedAvg(FedAvg):
             inplace=inplace
         )
         self.shapes = shapes
+        self.blocks = blocks
         self.num_runs = 0
 
     def aggregate_fit(self, server_round, results, failures):
@@ -90,8 +92,9 @@ class CustomFedAvg(FedAvg):
                     num_examples_total += num_examples
                 else:
                     # read the i-th shape from shapes and create empty list matching that size
-                    shape = self.shapes[index]
-                    layer_weights.append(np.zeros(shape))
+                    # shape = self.shapes[index]
+                    # layer_weights.append(np.zeros(shape))
+                    layer_weights.append(self.blocks[index] * num_examples)
             weighted_weights.append(layer_weights)
 
         weights_prime: NDArrays = [
@@ -133,6 +136,7 @@ def server_fn(context: Context):
         fraction_evaluate=1.0,
         initial_parameters=initial_parameters,
         shapes=shapes,
+        blocks=weights
     )
     config = ServerConfig(num_rounds=num_rounds)
 

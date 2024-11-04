@@ -23,7 +23,7 @@ class FlowerClient(NumPyClient):
         self.old_weights = get_weights(self.net)
         set_weights(self.net, parameters)
         train(self.net, self.trainloader, epochs=self.local_epochs, device=self.device)
-        parameters_for_fitting, config_for_fitting = self.get_parameters_phase_1(self.net, 0.1)
+        parameters_for_fitting, config_for_fitting = self.get_parameters_phase_1(self.net, 0.9)
         return parameters_for_fitting, len(self.trainloader), config_for_fitting
 
     def evaluate(self, parameters, config):
